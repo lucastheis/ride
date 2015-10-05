@@ -1,0 +1,280 @@
+name: "{{ name }}"
+input: "inputs"
+input: "h_init_i_jm1"
+input: "h_init_im1_j"
+input: "c_init_i_jm1"
+input: "c_init_im1_j"
+force_backward: true
+input_shape {
+	dim: {{ batch_size }}
+	dim: {{ num_pixels }}
+	dim: {{ num_channels }}
+}
+
+input_shape {
+	dim: {{ batch_size }}
+	dim: 1
+	dim: {{ num_hiddens }}
+}
+
+input_shape {
+	dim: {{ batch_size }}
+	dim: 1
+	dim: {{ num_hiddens }}
+}
+
+input_shape {
+	dim: {{ batch_size }}
+	dim: 1
+	dim: {{ num_hiddens }}
+}
+
+input_shape {
+	dim: {{ batch_size }}
+	dim: 1
+	dim: {{ num_hiddens }}
+}
+
+{% if layers|length > 1 %}
+layer {
+	name: "x"
+	type: "Slice"
+	bottom: "inputs"
+	{% for layer in layers %}
+	top: "x_{{ layer.i }}_{{ layer.j }}"
+	{% endfor %}
+	slice_param {
+		axis: 1
+	}
+}
+{% endif %}
+{% for layer in layers %}
+{% set i = layer.i %}
+{% set j = layer.j %}
+{% set i_jm1 = layer.i_jm1 %}
+{% set im1_j = layer.im1_j %}
+layer {
+	name: "y_{{ i }}_{{ j }}"
+	type: "Concat"
+	bottom: "x_{{ i }}_{{ j }}"
+	bottom: "h_{{ i_jm1}}"
+	bottom: "h_{{ im1_j }}"
+	top: "y_{{ i }}_{{ j }}"
+	concat_param {
+		axis: 2
+	}
+}
+
+layer {
+	name: "g_{{ i }}_{{ j }}"
+	type: "InnerProduct"
+	bottom: "y_{{ i }}_{{ j }}"
+	top: "g_{{ i }}_{{ j }}"
+	param {
+		name: "W_g"
+	}
+	param {
+		name: "b_g"
+	}
+	inner_product_param {
+		num_output: {{ num_hiddens }}
+		weight_filler {
+			type: "uniform"
+			min: -0.08
+			max: 0.08
+		}
+		axis: 2
+	}
+}
+layer {
+	name: "g_{{ i }}_{{ j }}_tanh"
+	type: "{{ nonlinearity }}"
+	bottom: "g_{{ i }}_{{ j }}"
+	top: "g_{{ i }}_{{ j }}"
+}
+
+layer {
+	name: "f_{{ i }}_{{ j }}_i"
+	type: "InnerProduct"
+	bottom: "y_{{ i }}_{{ j }}"
+	top: "f_{{ i }}_{{ j }}_i"
+	param {
+		name: "W_f_i"
+	}
+	param {
+		name: "b_f_i"
+	}
+	inner_product_param {
+		num_output: {{ num_hiddens }}
+		weight_filler {
+			type: "uniform"
+			min: -0.08
+			max: 0.08
+		}
+		axis: 2
+	}
+}
+
+layer {
+	name: "f_{{ i }}_{{ j }}_i_sigmoid"
+	type: "Sigmoid"
+	bottom: "f_{{ i }}_{{ j }}_i"
+	top: "f_{{ i }}_{{ j }}_i"
+}
+
+layer {
+	name: "f_{{ i }}_{{ j }}_j"
+	type: "InnerProduct"
+	bottom: "y_{{ i }}_{{ j }}"
+	top: "f_{{ i }}_{{ j }}_j"
+	param {
+		name: "W_f_j"
+	}
+	param {
+		name: "b_f_j"
+	}
+	inner_product_param {
+		num_output: {{ num_hiddens }}
+		weight_filler {
+			type: "uniform"
+			min: -0.08
+			max: 0.08
+		}
+		axis: 2
+	}
+}
+layer {
+	name: "f_{{ i }}_{{ j }}_j_sigmoid"
+	type: "Sigmoid"
+	bottom: "f_{{ i }}_{{ j }}_j"
+	top: "f_{{ i }}_{{ j }}_j"
+}
+
+layer {
+	name: "i_{{ i }}_{{ j }}"
+	type: "InnerProduct"
+	bottom: "y_{{ i }}_{{ j }}"
+	top: "i_{{ i }}_{{ j }}"
+	param {
+		name: "W_i"
+	}
+	param {
+		name: "b_i"
+	}
+	inner_product_param {
+		num_output: {{ num_hiddens }}
+		weight_filler {
+			type: "uniform"
+			min: -0.08
+			max: 0.08
+		}
+		axis: 2
+	}
+}
+layer {
+	name: "i_{{ i }}_{{ j }}_sigmoid"
+	type: "Sigmoid"
+	bottom: "i_{{ i }}_{{ j }}"
+	top: "i_{{ i }}_{{ j }}"
+}
+
+layer {
+	name: "o_{{ i }}_{{ j }}"
+	type: "InnerProduct"
+	bottom: "y_{{ i }}_{{ j }}"
+	top: "o_{{ i }}_{{ j }}"
+	param {
+		name: "W_o"
+	}
+	param {
+		name: "b_o"
+	}
+	inner_product_param {
+		num_output: {{ num_hiddens }}
+		weight_filler {
+			type: "uniform"
+			min: -0.08
+			max: 0.08
+		}
+		axis: 2
+	}
+}
+layer {
+	name: "o_{{ i }}_{{ j }}_sigmoid"
+	type: "Sigmoid"
+	bottom: "o_{{ i }}_{{ j }}"
+	top: "o_{{ i }}_{{ j }}"
+}
+
+layer {
+	name: "fc_{{ i }}_{{ j }}_i"
+	type: "Eltwise"
+	bottom: "f_{{ i }}_{{ j }}_i"
+	bottom: "c_{{ im1_j }}"
+	top: "fc_{{ i }}_{{ j }}_i"
+	eltwise_param {
+		operation: PROD
+	}
+}
+layer {
+	name: "fc_{{ i }}_{{ j }}_j"
+	type: "Eltwise"
+	bottom: "f_{{ i }}_{{ j }}_j"
+	bottom: "c_{{ i_jm1 }}"
+	top: "fc_{{ i }}_{{ j }}_j"
+	eltwise_param {
+		operation: PROD
+	}
+}
+layer {
+	name: "ig_{{ i }}_{{ j }}"
+	type: "Eltwise"
+	bottom: "i_{{ i }}_{{ j }}"
+	bottom: "g_{{ i }}_{{ j }}"
+	top: "ig_{{ i }}_{{ j }}"
+	eltwise_param {
+		operation: PROD
+	}
+}
+layer {
+	name: "c_{{ i }}_{{ j }}"
+	type: "Eltwise"
+	bottom: "fc_{{ i }}_{{ j }}_i"
+	bottom: "fc_{{ i }}_{{ j }}_j"
+	bottom: "ig_{{ i }}_{{ j }}"
+	top: "c_{{ i }}_{{ j }}"
+	eltwise_param {
+		operation: SUM
+	}
+}
+
+layer {
+	name: "h_{{ i }}_{{ j }}"
+	type: "Eltwise"
+	bottom: "o_{{ i }}_{{ j }}"
+	bottom: "c_{{ i }}_{{ j }}"
+	top: "h_{{ i }}_{{ j }}"
+	eltwise_param {
+		operation: PROD
+	}
+}
+layer {
+	name: "h_{{ i }}_{{ j }}_tanh"
+	type: "{{ nonlinearity }}"
+	bottom: "h_{{ i }}_{{ j }}"
+	top: "h_{{ i }}_{{ j }}"
+}
+{% endfor %}
+{% if layers|length > 1 %}
+layer {
+	name: "outputs"
+	type: "Concat"
+	{% for layer in layers %}
+	bottom: "h_{{ layer.i }}_{{ layer.j }}"
+	{% endfor %}
+	top: "outputs"
+	concat_param {
+		axis: 1
+	}
+}
+{% endif %}
